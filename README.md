@@ -1,14 +1,15 @@
 # ZeroGate
 
-ZeroGate is an open-source, autonomic cross-cloud GPU orchestration fabric built to eliminate unmanaged hardware idle costs in multi-tenant inference (vLLM) pipelines-without forcing you to suffer brutal 5-minute bare-metal cold starts.
+ZeroGate is an open-source, event-driven cross-cloud GPU orchestration fabric. It eliminates unmanaged hardware idle costs in multi-tenant inference (vLLM) pipelines. You no longer have to suffer brutal 5-minute bare-metal cold starts.
 
-Sitting between your application gateway and underlying hardware providers, ZeroGate implements an event-driven reactive architecture to securely scale dedicated infrastructure pools to absolute zero the moment tenant demand dries up.
+Sitting directly between your application gateway and underlying hardware providers, ZeroGate implements a reactive architecture. It securely scales dedicated infrastructure pools to absolute zero the moment tenant demand dries up.
+
 
 ---
 
 ## Core Architecture Primitives
 
-* **Autonomic Scale-to-Zero Daemon**: Continuously evaluates distributed tenant idle-tick registries via background event loops, executing immediate infrastructure erasure to flatten compute bills.
+* **Automated Scale-to-Zero Daemon**: Continuously evaluates distributed tenant idle-tick registries via background event loops, executing immediate infrastructure erasure to flatten compute bills.
 * **Thread-Safe Concurrency Lock Guard**: Implements non-blocking distributed lock coordination over incoming telemetry surges via Redis, cleanly parking requests while underlying hardware scales up.
 * **Dynamic Market Arbitrage**: Gracefully intercepts provider spot instance exhaustion events, automatically falling back across priority lanes to standard bare-metal configurations without breaking runtime inference streams.
 * **Immutable Relational Billing Ledger**: Features an integrated, real-time relational logging pipeline to calculate token-level utilization metrics and track infrastructure cost savings.
@@ -17,7 +18,7 @@ Sitting between your application gateway and underlying hardware providers, Zero
 
 ## 5-Minute Quick Start (Local Evaluation)
 
-Evaluate ZeroGate's queuing, state boundaries, and autonomic scaling primitives entirely on your local machine.
+Evaluate ZeroGate's queuing, state boundaries, and automated scaling primitives entirely on your local machine.
 
 By default, the engine boots with an isolated **Mock Mode** turned on (`ZEROGATE_MOCK=True`). This allows you to stress-test the complete orchestration fabric on any hardware (including Apple Silicon or non-GPU laptops) with **zero infrastructure costs, zero provider accounts, and zero local CUDA/NVIDIA driver dependencies**.
 
@@ -38,7 +39,7 @@ cp .env.example .env
 
 ### 3. Boot the Core Infrastructure Mesh
 
-Launch the ultra-lightweight Alpine service container stack (API Gateway, Kafka event broker streams, Redis state matrix, and PostgreSQL billing database):
+Launch the ultra-lightweight Alpine service container stack (API Gateway, Kafka event broker streams, Redis state cache, and PostgreSQL billing database):
 
 ```bash
 docker compose up --build -d
@@ -68,7 +69,7 @@ docker compose logs -f worker
 
 ---
 
-## Testing the Autonomic Scaling & Teardown Loops
+## Testing the Automated Scaling & Teardown Loops
 
 To watch ZeroGate handle live cluster expansion and scale-to-zero loops entirely inside the local deployment, you need to overwhelm the default baseline thread pools. Instead of editing source code, you can trigger this directly via your environment configurations:
 
@@ -88,7 +89,7 @@ To watch ZeroGate handle live cluster expansion and scale-to-zero loops entirely
 3. Open your second terminal tab and monitor your background worker daemon (`docker compose logs -f worker`). You will watch the engine detect the `Global Pipeline Load: 20`, spin up the simulation cluster drivers, and execute the infrastructure cleanup erasure loop exactly 10 seconds after the batch clears!
 
 > **System Resilience Note:**  
-> If you fire a secondary workload surge while a scale-to-zero teardown loop is actively running, the autonomic engine will instantly intercept the new traffic metrics, cancel the erasure cycle, and spin up fresh compute pools to process the payload without dropping a single packet.
+> If you fire a secondary workload surge while a scale-to-zero teardown loop is actively running, the engine will instantly intercept the new traffic metrics, cancel the erasure cycle, and spin up fresh compute pools to process the payload without dropping a single packet.
 
 ---
 
@@ -98,7 +99,7 @@ ZeroGate provides high-performance, non-blocking telemetry and state queries ove
 
 ### 1. Polling Task Inference Status
 
-Query the real-time lifecycle phase of a specific inference job cached across your distributed state matrix boundaries.
+Query the real-time lifecycle phase of a specific inference job cached across your distributed state layer.
 
 * **Path**: `Get /v1/status/{request_id}`
 * **Authentication**: None (Designed for safe, frictionless frontend/client-side polling without leaking master admin tokens).
@@ -122,7 +123,7 @@ Pull real-time relational aggregation directly from the PostgreSQL ledger to tra
     ```
 
 > **Systems Engineering Note: Telemetry Aggregation**  
-> The `aggregated_idle_tax_saved_usd` metric updates **strictly upon the completion of an autonomic infrastructure erasure cycle**. If your workload testing batch does not breach the `BURST_THRESHOLD` parameter (default: 15), the system processes your tasks entirely on the warm baseline buffer layer without provisioning extra burst nodes. Consequently, no cloud waste occurs, and the ledger will accurately report `0.0` until an over-capacity surge actively triggers a spin-up, idle tracking sequence, and a subsequent teardown loop.
+> The `aggregated_idle_tax_saved_usd` metric updates **strictly upon the completion of an infrastructure erasure cycle**. If your workload testing batch does not breach the `BURST_THRESHOLD` parameter (default: 15), the system processes your tasks entirely on the warm baseline buffer layer without provisioning extra burst nodes. Consequently, no cloud waste occurs, and the ledger will accurately report `0.0` until an over-capacity surge actively triggers a spin-up, idle tracking sequence, and a subsequent teardown loop.
 
 ---
 
@@ -198,9 +199,9 @@ Our active engineering sprint is focused on launching native RunPod container dr
 
 Deep-tech infrastructure is built iteratively. We publish our engineering milestones openly to cultivate transparent collaboration with our core alpha developer network.
 
-* **v0.1.0-alpha (Current)**: Full Event-Driven Kafka Consumer Gateway, Redis Distributed Lock Matrices, Autonomic scale-to-zero background daemons, and Local Evaluation Engine.
+* **v0.1.0-alpha (Current)**: Full event-driven kafka consumer gateway,  distributed locks, automated scale-to-zero background daemons, and local evaluation engine.
 
-* **v0.2.0 (Active Sprint)**: Implement fluid Cross-Cloud Pod Drivers (RunPod / Lambda Labs) to leverage container-based GPU scaling, dropping cold starts below 40 seconds.
+* **v0.2.0 (Active Sprint)**: Implement fluid cross-cloud pod drivers (RunPod) to leverage container-based GPU scaling, dropping cold starts under 90 seconds (and sub-40 seconds on cached container nodes).
 
 * **v0.3.0 (Production Enterprise Milestone)**: Transition from a push-based proxy router to a pull-based late-binding work-stealing consumer mesh to optimize multi-node execution throughput.
 
