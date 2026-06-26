@@ -61,7 +61,7 @@ async def run_stress_test_engine(total_requests, batch_size):
     print("Simulation matrix complete. Your multi-tenant ledger is fully populated.")
     print("\n")
     print("=" * 87)
-    print("DEMO VERIFICATION COMMANDS:")
+    print("VERIFICATION COMMANDS:")
     print(f"curl -X GET {user_url}/v1/status/<request_id>")
     print(f"curl -X GET {user_url}/v1/analytics -H \"X-ZeroGate-Key: zerogate-alpha-demo\"")
     print("=" * 87)
