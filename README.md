@@ -15,7 +15,7 @@ Sitting between your application gateway and underlying hardware providers, Zero
 
 ---
 
-## 5-Minute Quick Start (Local Sandbox Evaluation)
+## 5-Minute Quick Start (Local Evaluation)
 
 Evaluate ZeroGate's queuing, state boundaries, and autonomic scaling primitives entirely on your local machine.
 
@@ -28,7 +28,7 @@ git clone https://github.com/noah-garner/zerogate
 cd zerogate
 ```
 
-### 2. Configure Your Sandbox Environment
+### 2. Configure Your Local Environment
 
 Copy the pre-santized environment template. The default settings are pre-configured to launch the engine in an offline mock layer cleanly:
 
@@ -70,7 +70,7 @@ docker compose logs -f worker
 
 ## Testing the Autonomic Scaling & Teardown Loops
 
-To watch ZeroGate handle live cluster expansion and scale-to-zero loops entirely inside the local sandbox, you need to overwhelm the default baseline thread pools. Instead of editing source code, you can trigger this directly via your environment configurations:
+To watch ZeroGate handle live cluster expansion and scale-to-zero loops entirely inside the local deployment, you need to overwhelm the default baseline thread pools. Instead of editing source code, you can trigger this directly via your environment configurations:
 
 1. Open your local `.env` file and increase your workload density to breach your burst threshold limit of 15:
 
@@ -102,7 +102,7 @@ Query the real-time lifecycle phase of a specific inference job cached across yo
 
 * **Path**: `Get /v1/status/{request_id}`
 * **Authentication**: None (Designed for safe, frictionless frontend/client-side polling without leaking master admin tokens).
-* **Sandbox Verification Commands**:
+* **Verification Command**:
 
     ```bash
     curl -X GET http://localhost:8000/v1/status/<request_id_from_logs>
@@ -114,7 +114,7 @@ Pull real-time relational aggregation directly from the PostgreSQL ledger to tra
 
 * **Path**: `GET /v1/analytics`
 * **Required Header**: `X-ZeroGate-Key: {your_workspace_token}`
-* **Sandbox Verification Command**:
+* **Verification Command**:
 
     ```bash
     curl -X GET http://localhost:8000/v1/analytics \
@@ -198,7 +198,7 @@ Our active engineering sprint is focused on launching native RunPod container dr
 
 Deep-tech infrastructure is built iteratively. We publish our engineering milestones openly to cultivate transparent collaboration with our core alpha developer network.
 
-* **v0.1.0-alpha (Current)**: Full Event-Driven Kafka Consumer Gateway, Redis Distributed Lock Matrices, Autonomic scale-to-zero background daemons, and Local Evaluation Sandbox Mode.
+* **v0.1.0-alpha (Current)**: Full Event-Driven Kafka Consumer Gateway, Redis Distributed Lock Matrices, Autonomic scale-to-zero background daemons, and Local Evaluation Engine.
 
 * **v0.2.0 (Active Sprint)**: Implement fluid Cross-Cloud Pod Drivers (RunPod / Lambda Labs) to leverage container-based GPU scaling, dropping cold starts below 40 seconds.
 
@@ -210,7 +210,7 @@ Deep-tech infrastructure is built iteratively. We publish our engineering milest
 
 We are selecting **5-10 Core Alpha Developers** building production-grade AI platforms who need to optimize infrastructure utilization, secure multi-cloud fault tolerance, and eliminate unmanaged GPU idle tax.
 
-* **File an Issue**: Found an edge case in our async locking primitives? Open a detailed GitHub issue with your sandbox log output.
+* **File an Issue**: Found an edge case in our async locking primitives? Open a detailed GitHub issue with your simulator log output.
 * **Get Early Enterprise Access**: Reach out directly if you require custom private-cloud deployment scripts or dedicated queue isolation.
 
 Licensed under the [Apache 2.0 License](LICENSE).
