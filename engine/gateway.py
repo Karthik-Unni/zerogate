@@ -180,20 +180,12 @@ async def get_status(request_id: str):
     # Read the consolidated state hash payload completely
     task_cache = await redis_client.hgetall(f"task:cache:{request_id}")
     
-    task_state = task_cache.get("state") or task_cache.get(b"state")
-    if isinstance(task_state, bytes): 
-        task_state = task_state.decode('utf-8')
-    task_state = str(task_state or "queued_in_buffer")
+    task_state = task_cache.get("state", "queued_in_buffer")
     
     if task_state == "completed":
-        gen_time = task_cache.get("time") or task_cache.get(b"time", b"0.0")
-        if isinstance(gen_time, bytes): gen_time = gen_time.decode('utf-8')
-        
-        prompt = task_cache.get("prompt") or task_cache.get(b"prompt", b"")
-        if isinstance(prompt, bytes): prompt = prompt.decode('utf-8')
-        
-        response = task_cache.get("response") or task_cache.get(b"response", b"")
-        if isinstance(response, bytes): response = response.decode('utf-8')
+        gen_time = task_cache.get("time", "0.0")
+        prompt = task_cache.get("prompt", "")
+        response = task_cache.get("response", "")
         
         return {
             "request_id": request_id,

@@ -212,10 +212,10 @@ async def scale_to_zero(redis_client):
     workspace remains completely idle past the configured timeout limits.
     """
     log.info("Multi-Tenant Scale-to-Zero background daemon engaged.")
-    IDLE_TIMEOUT, WARN_WINDOW = int(os.getenv("SCALE_TO_ZERO_TIMEOUT", 10)), int(os.getenv("SCALE_TO_ZERO_WARN_WINDOW", 5))
+    IDLE_TIMEOUT = int(os.getenv("SCALE_TO_ZERO_TIMEOUT", 10))
+    WARN_WINDOW = int(os.getenv("SCALE_TO_ZERO_WARN_WINDOW", 5))
     SLEEP_INTERVAL = 2
     WARN_THRESHOLD = IDLE_TIMEOUT - WARN_WINDOW
-    tenant_idle_registry, tenant_warned_registry = {}, {}
 
     # Run the self-healing cloud sweep once on container boot up, ignore if mock = true
     try:
@@ -244,49 +244,48 @@ async def scale_to_zero(redis_client):
     while True:
         await asyncio.sleep(SLEEP_INTERVAL)
         try:
-            active_state_keys = await redis_client.keys("cluster_state:*:burst")
-            
-            for cluster_key in active_state_keys:
-                if isinstance(cluster_key, bytes): 
-                    cluster_key = cluster_key.decode('utf-8')
+            # Non-blocking async scanning over distributed keyspace strings
+            async for cluster_key in redis_client.scan_iter(match="cluster_state:*:burst"):
                 parts = cluster_key.split(":")
-                if len(parts) < 3: 
+                if len(parts) < 3:
                     continue
                 tenant_id = parts[1]
-                
-                tenant_idle_registry.setdefault(tenant_id, 0)
-                tenant_warned_registry.setdefault(tenant_id, False)
-                
-                # Aggregate Metrics and State Layer
+
+                idle_ticks_key = f"tenant_idle_ticks:{tenant_id}"
+                warned_key = f"tenant_warned_state:{tenant_id}"
+
+                current_ticks_raw = await redis_client.get(idle_ticks_key)
+                current_ticks = int(current_ticks_raw) if current_ticks_raw else 0
                 tenant_jobs = int(await redis_client.get(f"active_jobs:{tenant_id}") or 0)
+                
                 cluster = await redis_client.hgetall(cluster_key)
                 gpu_status = cluster.get("status", "cold")
-                if isinstance(gpu_status, bytes): 
-                    gpu_status = gpu_status.decode('utf-8')
-                
-                # Reset Tracker Bypass Guardrails
+
+                # Reset tracker bypass guardrails across the shared Redis cluster state
                 if gpu_status in ["cold", "tearing_down"] or tenant_jobs > 0:
-                    tenant_idle_registry[tenant_id], tenant_warned_registry[tenant_id] = 0, False
+                    await redis_client.delete(idle_ticks_key, warned_key)
                     continue
-                    
-                # Clock Progression and Threshold Boundaries Evaluation
-                tenant_idle_registry[tenant_id] += SLEEP_INTERVAL
-                current_ticks = tenant_idle_registry[tenant_id]
+
+                # Clock Progression Metrics
+                current_ticks += SLEEP_INTERVAL
+                await redis_client.set(idle_ticks_key, current_ticks)
                 log.info(f"Tenant: {tenant_id} | Idle Time: {current_ticks}s / {IDLE_TIMEOUT}s")
-                
+
+                # Evaluate Warning and Timeout Threshold Boundaries
                 if current_ticks >= IDLE_TIMEOUT:
                     log.info(f"Tenant {tenant_id} timed out. Processing infrastructure erasure...")
                     await redis_client.hset(cluster_key, "status", "tearing_down")
-                    
+
                     if await manage_hyperstack_lifecycle(redis_client, "delete", tenant_id, "burst") == "SUCCESS":
-                        await redis_client.delete(cluster_key)
-                        tenant_idle_registry[tenant_id], tenant_warned_registry[tenant_id] = 0, False
+                        await redis_client.delete(cluster_key, idle_ticks_key, warned_key)
                     else:
                         await redis_client.hset(cluster_key, "status", "active")
                         
-                elif current_ticks >= WARN_THRESHOLD and not tenant_warned_registry[tenant_id]:
-                    log.info(f"Warning: Tenant {tenant_id} cluster idle for {current_ticks}s! Teardown in {IDLE_TIMEOUT - current_ticks}s!")
-                    tenant_warned_registry[tenant_id] = True
+                elif current_ticks >= WARN_THRESHOLD:
+                    is_warned = await redis_client.get(warned_key) == "True"
+                    if not is_warned:
+                        log.info(f"Warning: Tenant {tenant_id} cluster idle for {current_ticks}s! Teardown in {IDLE_TIMEOUT - current_ticks}s!")
+                        await redis_client.set(warned_key, "True")
 
         except Exception as loop_crash_error:
             log.info(f"The background loop caught an exception frame: {loop_crash_error}")
