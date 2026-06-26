@@ -20,11 +20,7 @@ PROMPTS = [
     "Synthesize the trade-offs between Kafka streams and RabbitMQ configurations."
 ]
 
-if os.getenv("ZEROGATE_MOCK") == "True":
-    # Runs inside docker mesh, must use "zerogate-gateway"
-    BASE_URL = "http://zerogate-gateway:8000"
-else:
-    BASE_URL = os.getenv("ZEROGATE_BASE_URL", "https://zerogate.cloud")
+BASE_URL = os.getenv("ZEROGATE_BASE_URL", "http://gateway:8000").rstrip("/")
 
 async def fire_simulated_inference(client, task_id):
     payload = {
@@ -32,7 +28,7 @@ async def fire_simulated_inference(client, task_id):
         "prompt": random.choice(PROMPTS)
     }
     try:
-        res = await client.post(BASE_URL + "/v1/compute", json=payload, timeout=10.0)
+        res = await client.post(f"{BASE_URL}/v1/compute", json=payload, timeout=60.0)
         res.raise_for_status() 
         if "application/json" in res.headers.get("content-type", ""):
             req_id = res.json().get('request_id', 'unknown_id')
@@ -49,13 +45,18 @@ async def fire_simulated_inference(client, task_id):
 
 async def run_stress_test_engine(total_requests, batch_size):
     async with httpx.AsyncClient(headers=HEADERS) as client:
-        for i in range(1, total_requests, batch_size):
-            tasks = [fire_simulated_inference(client, i + j) for j in range(batch_size)]
+        for i in range(1, total_requests + 1, batch_size):
+            # Caps batch sizes on final loops to avoid tracking spillover
+            current_batch = min(batch_size, total_requests - i + 1)
+            tasks = [fire_simulated_inference(client, i + j) for j in range(current_batch)]
             await asyncio.gather(*tasks)
             await asyncio.sleep(0.2)
 
-    # Resolve the correct address path for the user running curl from their host machine
-    user_url = "http://localhost:8000" if os.getenv("ZEROGATE_MOCK") == "True" else BASE_URL
+    # If the internal URL targets the internal docker network, substitute localhost for host terminal execution
+    if "gateway" in BASE_URL or os.getenv("ZEROGATE_MOCK") == "True":
+        user_url = "http://localhost:8000"
+    else:
+        user_url = BASE_URL
 
     print("\n")
     print("Simulation matrix complete. Your multi-tenant ledger is fully populated.")
