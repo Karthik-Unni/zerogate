@@ -13,7 +13,7 @@ Sitting directly between your application gateway and underlying hardware provid
 
 ## Core Architecture Primitives
 
-* **Automated Scale-to-Zero Daemon**: Continuously evaluates distributed tenant idle-tick registries via background event loops, executing immediate infrastructure erasure to flatten compute bills.
+* **Automated Scale-to-Zero Daemon**: Continuously evaluates tenant idle thresholds using a non-blocking Redis SCAN iterator, executing immediate infrastructure erasure to flatten compute bills.
 * **Thread-Safe Concurrency Lock Guard**: Implements non-blocking distributed lock coordination over incoming telemetry surges via Redis, cleanly parking requests while underlying hardware scales up.
 * **Dynamic Market Arbitrage**: Gracefully intercepts provider spot instance exhaustion events, automatically falling back across priority lanes to standard bare-metal configurations without breaking runtime inference streams.
 * **Immutable Relational Billing Ledger**: Features an integrated, real-time relational logging pipeline to calculate token-level utilization metrics and track infrastructure cost savings.
@@ -93,7 +93,7 @@ To watch ZeroGate handle live cluster expansion and scale-to-zero loops entirely
 3. Open your second terminal tab and monitor your background worker daemon (`docker compose logs -f worker`). You will watch the engine detect the `Global Pipeline Load: 20`, spin up the simulation cluster drivers, and execute the infrastructure cleanup erasure loop exactly 10 seconds after the batch clears!
 
 > **System Resilience Note:**  
-> If you fire a secondary workload surge while a scale-to-zero teardown loop is actively running, the engine will instantly intercept the new traffic metrics, cancel the erasure cycle, and spin up fresh compute pools to process the payload without dropping a single packet.
+> If you fire a secondary workload surge while a scale-to-zero teardown loop is actively running, the background worker will automatically clear the idle keyspace trackers, bypass the teardown threshold, and gracefully prioritize processing the active payload queue.
 
 ---
 

@@ -242,9 +242,8 @@ async def main_worker_loop():
             
             in_flight_offsets[msg.offset] = False
             
-            global_flight_raw = await redis_client.get("global_in_flight_counter")
-            global_flight = int(global_flight_raw or 0)
-            
+            global_flight = int(await redis_client.get("global_in_flight_counter") or 0)
+
             log_gate_key = f"log_gate:pipeline_load:{global_flight}"
 
             # Log for 1 in a batch
