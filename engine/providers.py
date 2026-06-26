@@ -1,3 +1,10 @@
+"""
+ZeroGate Hardware Allocation and Telemetry Provisioning Engine.
+
+This module acts as the explicit resource orchestration abstraction layer,
+managing cloud hardware lifecycles, evaluating hardware fallback priorities,
+and executing automated pool expansion or scale-to-zero teardown sequences.
+"""
 import os, httpx, json, asyncio
 from uuid import uuid4
 from engine.logger import ZeroGateLogger
@@ -89,9 +96,9 @@ async def load_workspace_blueprint(redis_client, tenant_id: str, pool_name: str)
 async def manage_hyperstack_lifecycle(redis_client, action: str, tenant_id: str, pool_name: str = "main") -> str:
     """
     Orchestrates live cloud hardware allocations and resource teardowns.
-    
-    Handles multi-flavor fallback scheduling arrays, evaluates inventory stock levels, 
-    polls infrastructure fabric providers until virtual machine environments report 
+
+    Handles hardware profile fallback scheduling arrays, evaluates inventory stock levels,
+    polls infrastructure fabric providers until instance environments report
     healthy network status, and cleanly destroys instances during scale-down requests.
     """
     log.info(f"Lifecycle triggered | Tenant: {tenant_id} | Action: {action} | Pool: {pool_name}")
