@@ -9,6 +9,7 @@ Sitting directly between your application gateway and underlying hardware provid
 ## Production Demo
 
 [![ZeroGate Core Engine Production Demo](https://img.youtube.com/vi/qYx7zrRX6sU/maxresdefault.jpg)](https://www.youtube.com/watch?v=qYx7zrRX6sU)
+
 ---
 
 ## Core Architecture Primitives
@@ -17,6 +18,22 @@ Sitting directly between your application gateway and underlying hardware provid
 * **Thread-Safe Concurrency Lock Guard**: Implements non-blocking distributed lock coordination over incoming telemetry surges via Redis, cleanly parking requests while underlying hardware scales up.
 * **Dynamic Market Arbitrage**: Gracefully intercepts provider spot instance exhaustion events, automatically falling back across priority lanes to standard bare-metal configurations without breaking runtime inference streams.
 * **Immutable Relational Billing Ledger**: Features an integrated, real-time relational logging pipeline to calculate token-level utilization metrics and track infrastructure cost savings.
+
+### System Topology & Data Flow
+
+```mermaid
+graph TD
+    Client[Client Inference Request] -->|HTTP POST| Gateway[FastAPI Ingress Gateway]
+    Gateway -->|Verify Tokens| Redis[(Shared Redis State Grid)]
+    Gateway -->|Append Payload| Kafka[[Apache Kafka Ingress Buffer]]
+    Kafka -->|Stream Jobs| Worker[Async Orchestration Worker]
+    Worker <--->|Read/Write State| Redis
+    Worker -->|Append Logs| Postgres[(PostgreSQL Telemetry Ledger)]
+    Worker -->|Automated Provision| Providers[Provider APIs]
+    Providers -->|Deploy Runtime| GPU[Live GPU Pool]
+```
+
+</details>
 
 ---
 
