@@ -23,14 +23,21 @@ Sitting directly between your application gateway and underlying hardware provid
 
 ```mermaid
 graph TD
+    %% Global Styling Overrides to force transparent label backdrops %%
+    classDef default fill:#1e1e1e,stroke:#333,stroke-width:1px;
+    
     Client[Client Inference Request] -->|HTTP POST| Gateway[FastAPI Ingress Gateway]
-    Gateway -->|Verify Tokens| Redis[(Shared Redis State Grid)]
+    
+    %% Fixed line routing to clear background text intersection %%
+    Gateway -.->|Verify Tokens| Redis[(Shared Redis State Grid)]
     Gateway -->|Append Payload| Kafka[[Apache Kafka Ingress Buffer]]
+    
     Kafka -->|Stream Jobs| Worker[Async Orchestration Worker]
     Worker <--->|Read/Write State| Redis
     Worker -->|Append Logs| Postgres[(PostgreSQL Telemetry Ledger)]
-    Worker -->|Automated Provision| Providers[Provider APIs]
-    Providers -->|Deploy Runtime| GPU[Live GPU Pool]
+    
+    Worker -->|Automated Provision| Hyperstack[Provider APIs]
+    Hyperstack -->|Deploy Runtime| GPU[Live GPU Pool]
 ```
 
 </details>
