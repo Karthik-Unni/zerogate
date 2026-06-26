@@ -183,10 +183,22 @@ For high-performance, non-virtualized production workloads. To bypass heavy runt
 2. Update your credentials inside your `.env` configuration file:
 
     ```ini
+    # ==============================================================================
+    # ZEROGATE SYSTEM CONFIGS
+    # ==============================================================================
     ZEROGATE_MOCK=False
-    HYPERSTACK_API_KEY=your_secret_api_key
-    HYPERSTACK_ENVIRONMENT_NAME=Default-Canada
+    ZEROGATE_API_KEY=your_zerogate_key
+    ZEROGATE_BASE_URL=your_zerogate_endpoint
+
+    # ==============================================================================
+    # HYPERSTACK CONFIGS
+    # ==============================================================================
     HYPERSTACK_BASE_URL=https://nexgencloud.com
+    HYPERSTACK_API_KEY=your_secret_api_key
+    HYPERSTACK_MAIN_NODE_IP=your_prewarmed_hyperstack_node_ip
+    HYPERSTACK_SSH_KEY_NAME=your_ssh_key_name
+    HYPERSTACK_ENVIRONMENT_NAME=your_environment_name
+    HYPERSTACK_REGION=your_region_name
     ```
 
 ### Tier 2: Lightweight Container Bursting (RunPod Provider - Coming This Week)
