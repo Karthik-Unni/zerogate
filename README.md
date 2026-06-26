@@ -4,7 +4,11 @@ ZeroGate is an open-source, event-driven cross-cloud GPU orchestration fabric. I
 
 Sitting directly between your application gateway and underlying hardware providers, ZeroGate implements a reactive architecture. It securely scales dedicated infrastructure pools to absolute zero the moment tenant demand dries up.
 
+---
 
+## Production Demo
+
+[![ZeroGate Core Engine Production Demo](https://img.youtube.com/vi/qYx7zrRX6sU/maxresdefault.jpg)](https://www.youtube.com/watch?v=qYx7zrRX6sU)
 ---
 
 ## Core Architecture Primitives
