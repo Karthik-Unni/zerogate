@@ -201,3 +201,30 @@ async def get_status(request_id: str):
         "status": "processing",
         "infrastructure": {"cluster_slice": "allocated_pool", "vllm_state": "hot_path_stream_engaged"}
     }
+
+@app.post("/mock/runpod/graphql")
+async def mock_runpod_graphql(request: Request):
+    """
+    Simulates RunPod Graphql Container API responses for zero-cost driver validation.
+    """
+    # 1. Parse the outbound payload body sent by our worker daemon
+    body = await request.json()
+    query_string = body.get("query", "")
+    variables = body.get("variables", {})
+    
+    print(f"[RunPod Mock API] Intercepted GraphQL Query: {query_string}")
+    print(f"[RunPod Mock API] Intercepted Input Variables: {variables}")
+    
+    # 2. Simulate a successful container pod spin-up response shape
+    mock_success_response = {
+        "data": {
+            "podFindAndCreate": {
+                "id": "mock-pod-xyz-12345",
+                "imageName": variables.get("input", {}).get("imageName", "unknown"),
+                "status": "PROVISIONING",
+                "runtimeInSeconds": 0
+            }
+        }
+    }
+    
+    return mock_success_response

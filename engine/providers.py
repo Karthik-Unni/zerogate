@@ -23,7 +23,7 @@ async def get_api_context(redis_client, tenant_id: str):
         return "MOCK_CLIENT", "http://zerogate-gateway:8000", {"Authorization": "Bearer mock-key"}
 
     api_key = await redis_client.get(f"auth:credentials:{tenant_id}:api_key") or os.getenv("HYPERSTACK_API_KEY")
-    base_url = os.getenv("HYPERSTACK_BASE_URL")
+    base_url = os.getenv("HYPERSTACK_API_URL")
     headers = {
         "api_key": api_key,
         "Content-Type": "application/json"
