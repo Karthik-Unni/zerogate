@@ -23,24 +23,30 @@ Sitting directly between your application gateway and underlying hardware provid
 
 ```mermaid
 graph TD
-    %% Global Styling Overrides to force transparent label backdrops %%
-    classDef default fill:#1e1e1e,stroke:#333,stroke-width:1px;
+    Client[Client Inference Request] --> HTTP_POST([HTTP POST]) --> Gateway[FastAPI Ingress Gateway]
     
-    Client[Client Inference Request] -->|HTTP POST| Gateway[FastAPI Ingress Gateway]
+    %% Dotted lines lift Verify Tokens higher up to the middle %%
+    Gateway -.-> Verify_Tokens([Verify Tokens]) -.-> Redis[(Shared Redis State Grid)]
     
-    %% Fixed line routing to clear background text intersection %%
-    Gateway -.->|Verify Tokens| Redis[(Shared Redis State Grid)]
-    Gateway -->|Append Payload| Kafka[[Apache Kafka Ingress Buffer]]
+    Gateway --> Append_Payload([Append Payload]) --> Kafka[[Apache Kafka Ingress Buffer]]
     
-    Kafka -->|Stream Jobs| Worker[Async Orchestration Worker]
-    Worker <--->|Read/Write State| Redis
-    Worker -->|Append Logs| Postgres[(PostgreSQL Telemetry Ledger)]
+    Kafka --> Stream_Jobs([Stream Jobs]) --> Worker[Async Orchestration Worker]
+    Worker --> Read_Write([Read/Write State]) --> Redis
+    Worker --> Append_Logs([Append Logs]) --> Postgres[(PostgreSQL Telemetry Ledger)]
     
-    Worker -->|Automated Provision| Hyperstack[Provider APIs]
-    Hyperstack -->|Deploy Runtime| GPU[Live GPU Pool]
-```
+    Worker --> Auto_Provision([Automated Provision]) --> Hyperstack[Provider APIs]
+    Hyperstack --> Deploy_Runtime([Deploy Runtime]) --> GPU[Live GPU Pool]
 
-</details>
+    %% Mute the action labels so the service containers pop %%
+    style HTTP_POST fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+    style Verify_Tokens fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+    style Append_Payload fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+    style Stream_Jobs fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+    style Read_Write fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+    style Append_Logs fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+    style Auto_Provision fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+    style Deploy_Runtime fill:#1b1c1e,stroke:#3a3b3d,stroke-width:1px,color:#888
+```
 
 ---
 
