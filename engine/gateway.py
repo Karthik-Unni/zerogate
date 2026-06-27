@@ -129,7 +129,7 @@ async def process_compute(payload: InferenceRequest, request: Request, client_ke
     return {
         "status": "accepted",
         "request_id": request_id,
-        "polling_check_url": f"{zerogate_base_url}/v1/status{request_id}",
+        "polling_check_url": f"{zerogate_base_url}/v1/status/{request_id}",
         "message": f"Payload enqueued. Check results by running: curl -X GET {zerogate_base_url}/v1/status/{request_id}"
     }
 
