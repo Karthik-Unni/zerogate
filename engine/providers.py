@@ -75,23 +75,6 @@ async def load_workspace_blueprint(redis_client, tenant_id: str, pool_name: str)
         except Exception:
             pass
 
-    # defaults = {
-    #     "base": {
-    #         "name": "zerogate-node",
-    #         "profiles": ["n3-L40x1"],
-    #         "image": "ZeroGate-Alpha"
-    #     },
-    #     "burst": {
-    #         "name": "zerogate-burst",
-    #         "profiles": ["n3-RTX-A6000x1-spot","n3-RTX-A6000x1", "n3-L40x1-spot", "n3-L40x1"],
-    #         "image": "ZeroGate-Alpha"
-    #     },
-    #     "mock": {
-    #         "name": "zerogate-mock",
-    #         "profiles": ["mock-profile"],
-    #         "image": "mock-latest"
-    #     }
-    # }
     defaults = DEFAULTS
 
     return defaults.get(pool_name, defaults["base"])
