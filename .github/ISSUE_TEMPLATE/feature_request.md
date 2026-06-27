@@ -1,26 +1,26 @@
 ---
-name: Feature Request / Provider Driver
+name: Feature Request
 about: Propose a new infrastructure driver integration, telemetry metric, or optimization.
 title: '[FEAT] '
 labels: enhancement, discussion
 assignees: ''
 ---
 
-## Describe the Feature Core
+## 🛑 Compliance Check
 
-A clear and concise description of what infrastructure extension or orchestration abstraction you want to add to ZeroGate.
+- [ ] I have read the `CONTRIBUTING.md` guidelines.
+- [ ] I understand that ZeroGate maintains a strict zero-dependency ban on proprietary cloud vendor SDK packages.
 
-## High-Value Engineering Problem It Solves
+## Feature Overview
 
-How does this optimization drop container cold starts, simplify cross-cloud networking, or cut idle cloud bills further?
+- **Targeted Infrastructure Provider:** [e.g., Lambda Labs, RunPod GraphQL, Ollama local, Hyperstack]
+- **High-Value Engineering Problem It Solves:** How does this drop container cold starts, simplify networking, or slash idle bills further?
 
-## Proposed Architectural Implementation Matrix
+## Proposed Architecture
 
-Describe how you visualize the code changes mapping into `engine/providers.py` or your async gateways:
+- **Implementation Strategy:** Describe how you visualize these changes mapping into `engine/providers.py` or your async gateways.
+- **Standardized Data Contracts:** What payload fields must track inside local state cache boundaries?
 
-* Targeted Infrastructure Provider: [e.g., Lambda Labs, RunPod GraphQL, Ollama local]
-* Standardized Data Contract Maps: What payload fields must be tracked inside the local state cache boundaries.
-
-## Additional Engineering Context
+## Additional Context
 
 Add any extra cloud hardware API documentation links, reference setups, or raw JSON schemas below.
