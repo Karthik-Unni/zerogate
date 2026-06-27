@@ -8,6 +8,7 @@ and executing automated pool expansion or scale-to-zero teardown sequences.
 import os, httpx, json, asyncio
 from uuid import uuid4
 from engine.logger import ZeroGateLogger
+from engine.configs import DEFAULTS
 
 log = ZeroGateLogger("AUTONOMIC")
 
@@ -73,27 +74,29 @@ async def load_workspace_blueprint(redis_client, tenant_id: str, pool_name: str)
             return json.loads(blueprint_raw)
         except Exception:
             pass
-            
-    defaults = {
-        "main": {
-            "name": "zerogate-node",
-            "profiles": ["n3-L40x1"],
-            "image": "ZeroGate-Alpha"
-        },
-        "burst": {
-            "name": "zerogate-burst",
-            "profiles": ["n3-RTX-A6000x1-spot","n3-RTX-A6000x1", "n3-L40x1-spot", "n3-L40x1"],
-            "image": "ZeroGate-Alpha"
-        },
-        "mock": {
-            "name": "zerogate-mock",
-            "profiles": ["mock-profile"],
-            "image": "mock-latest"
-        }
-    }
-    return defaults.get(pool_name, defaults["main"])
 
-async def manage_hyperstack_lifecycle(redis_client, action: str, tenant_id: str, pool_name: str = "main") -> str:
+    # defaults = {
+    #     "base": {
+    #         "name": "zerogate-node",
+    #         "profiles": ["n3-L40x1"],
+    #         "image": "ZeroGate-Alpha"
+    #     },
+    #     "burst": {
+    #         "name": "zerogate-burst",
+    #         "profiles": ["n3-RTX-A6000x1-spot","n3-RTX-A6000x1", "n3-L40x1-spot", "n3-L40x1"],
+    #         "image": "ZeroGate-Alpha"
+    #     },
+    #     "mock": {
+    #         "name": "zerogate-mock",
+    #         "profiles": ["mock-profile"],
+    #         "image": "mock-latest"
+    #     }
+    # }
+    defaults = DEFAULTS
+
+    return defaults.get(pool_name, defaults["base"])
+
+async def manage_hyperstack_lifecycle(redis_client, action: str, tenant_id: str, pool_name: str = "base") -> str:
     """
     Orchestrates live cloud hardware allocations and resource teardowns.
 
