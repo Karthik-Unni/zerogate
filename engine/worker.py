@@ -108,19 +108,27 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
             raise Exception("Failed to secure active target IP from hypervisor layer.")
 
         if os.getenv("ZEROGATE_MOCK") != "True":
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                for attempt in range(90):
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                for attempt in range(1, 121): # Expanded to 4 minutes to guarantee heavy unquantized models stabilize
                     try:
-                        if (await client.get(f"http://{target_ip}:11434/v1/models")).status_code == 200:
-                            if await redis_client.set(f"log_gate:{target_ip}:ready", "1", ex=5, nx=True):
-                                log.info("Target interface synchronized! vLLM model engine is hot.")
-                            break
-                    except (httpx.ConnectError, httpx.ConnectTimeout):
-                        # Only one thread prints the ticker step
-                        if await redis_client.set(f"log_gate:{target_ip}:tick:{attempt}", "1", ex=5, nx=True):
-                            log.warning(f"Synchronizing cloud instance model cache layer (Checking step {attempt + 1}/90)...")
+                        # Non-blocking async check against the container's standard inference port
+                        response = await client.get(f"http://{target_ip}:11434/v1/models")
                         
-                        await asyncio.sleep(2)
+                        if response.status_code == 200:
+                            if await redis_client.set(f"log_gate:{target_ip}:ready", "1", ex=5, nx=True):
+                                log.info(f"Target interface synchronized! Remote vLLM model engine is officially hot.")
+                            break
+                            
+                    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.HTTPError):
+                        # Check every 2 seconds, fire a log every 10 seconds
+                        if attempt % 5 == 0:
+                            if await redis_client.set(f"log_gate:{target_ip}:pending", "1", ex=10, nx=True):
+                                log.warning(f"Waiting for vLLM socket layer to bind on host: {target_ip}...")
+                            
+                    await asyncio.sleep(2)
+                else:
+                    # If the loop completes 120 ticks without hitting a break, the container failed to initialize
+                    raise TimeoutError(f"The model engine container at {target_ip} failed to open socket lines within 4 minutes.")
 
         start_time = time.time()
 

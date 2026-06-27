@@ -88,22 +88,18 @@ async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: 
             profile_fallback_list = raw_profiles if isinstance(raw_profiles, list) else [raw_profiles]
             log.info(f"Initiating hardware allocation sweeps across priority lanes: {profile_fallback_list}")
             allocated_successfully = False
-            for flavor_profile in profile_fallback_list:
-                raw_profiles = config.get("profiles")
-                profile_fallback_list = raw_profiles if isinstance(raw_profiles, list) else [raw_profiles]
+            for profile in profile_fallback_list:
+                log.info(f"Routing allocation payload to [{provider}] on profile: {profile}")
                 
-                log.info(f"Initiating hardware allocation sweeps across priority lanes: {profile_fallback_list}")
-                allocated_successfully = False
-                for flavor_profile in profile_fallback_list:
-                    log.info(f"Routing allocation payload to [{provider}] on profile: {flavor_profile}")
+                allocated_successfully = await driver.allocate(client, base_url, headers, profile, config)
+                
+                if allocated_successfully:
+                    log.info(f"Successfully secured hardware allocation on target profile: {profile}. Breaking fallback loop.")
+                    break
                     
-                    allocated_successfully = await driver.allocate(client, base_url, headers, flavor_profile, config)
-                    if allocated_successfully:
-                        break
-                        
-                if not allocated_successfully:
-                    log.critical(f"[ORCHESTRATOR-FATAL] All configured priority profiles are completely out of stock on {provider}.")
-                    return ""
+            if not allocated_successfully:
+                log.critical(f"[ORCHESTRATOR-FATAL] All configured priority profiles are completely out of stock on {provider}.")
+                return ""
             
             log.info(f"Awaiting active routing configurations from [{provider}] hypervisor cluster...")
             for attempt in range(1, 91):
