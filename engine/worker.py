@@ -9,7 +9,7 @@ import json, asyncio, time, os, httpx, asyncpg,logging
 from aiokafka import AIOKafkaConsumer, TopicPartition
 import redis.asyncio as aioredis
 from engine.logger import ZeroGateLogger
-from engine.providers import manage_hyperstack_lifecycle, scale_to_zero
+from engine.orchestrator import manage_infrastructure_lifecycle, scale_to_zero
 
 # Global Memory Anchor to protect tasks from Python's garbage collector
 ACTIVE_TASKS = set()
@@ -96,7 +96,7 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
                         await redis_client.hset(cluster_key, "status", "booting")
                         
                         boot_start = time.time()
-                        target_ip = await manage_hyperstack_lifecycle(redis_client, "start", tenant_id, "burst")
+                        target_ip = await manage_infrastructure_lifecycle(redis_client, "start", tenant_id, "burst")
                         cold_start_ms = int((time.time() - boot_start) * 1000)
                         
                         await redis_client.hset(cluster_key, mapping={"status": "active", "ip": target_ip})
