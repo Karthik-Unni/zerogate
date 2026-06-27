@@ -203,7 +203,7 @@ async def get_status(request_id: str):
     }
 
 @app.post("/mock/runpod/graphql")
-async def mock_runpod_graphql(request: Request):
+async def mock_runpod(request: Request):
     """
     Simulates RunPod Graphql Container API responses for zero-cost driver validation.
     """

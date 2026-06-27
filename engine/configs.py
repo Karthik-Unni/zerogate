@@ -23,18 +23,18 @@ Note: You can configure 'base' to use Hyperstack bare-metal virtual machines
 """
 DEFAULTS = {
     "base": {
-        "provider": "hyperstack",
+        "provider": "runpod",
         "name": "zerogate-base",
-        "image": "ZeroGate-Alpha",
-        "profiles": ["n3-L40x1"],
+        "image": "runpod/vllm:latest",
+        "profiles": ["gpu-rtx-4090-1"],
         "min_nodes": 0,
         "max_nodes": 1,
     },
     "burst": {
-        "provider": "hyperstack",
+        "provider": "runpod",
         "name": "zerogate-burst",
-        "image": "ZeroGate-Alpha",
-        "profiles": ["n3-RTX-A6000x1-spot","n3-RTX-A6000x1", "n3-L40x1-spot", "n3-L40x1"],
+        "image": "runpod/vllm:latest",
+        "profiles": ["gpu-rtx-4090-1"],
         "min_nodes": 0,
         "max_nodes": 5, 
     },

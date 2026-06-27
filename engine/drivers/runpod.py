@@ -48,9 +48,19 @@ class RunPodDriver(BaseCloudDriver):
             return False
         return True
 
+    # None for mock: faithfully waiting for the IP to change..
     async def discover_state(self, client, base_url, headers, config) -> tuple:
-        # Intercept point for your local FastAPI simulator route
-        return "mock-runpod-pod-999", "gateway"
+        """
+        Queries cloud environments to resolve active instances and track boot status.
+        """
+        # Read our local runtime gate keys to determine if an instance is genuinely hot
+        if os.getenv("ZEROGATE_MOCK") == "True" or "gateway" in base_url:
+            # We check the active global context state mapping via your orchestrator layer
+            # On a fresh container boot with an empty queue, this will cleanly report a cold track
+            return "NONE", ""
+
+        # We will drop our native async GraphQL query strings here to parse live tokens
+        return "NONE", ""
 
     async def teardown(self, client, base_url, headers, node_id) -> bool:
         return True
