@@ -26,7 +26,7 @@ DEFAULTS = {
         "provider": "hyperstack",
         "name": "zerogate-base",
         "image": "ZeroGate-Alpha",
-        "profiles": ["n3-L40x1-spot"],
+        "profiles": ["n3-L40x1"],
         "min_nodes": 0,
         "max_nodes": 1,
     },
