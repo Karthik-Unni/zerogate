@@ -83,7 +83,7 @@ class HyperstackDriver(BaseCloudDriver):
                     last_vm = vms[-1]
                     vm_id = str(last_vm.get("id"))
                     public_ip = str(last_vm.get("floating_ip") or last_vm.get("public_ip", "")).strip()
-                    return vm_id, public_ip
+                    return vm_id, f"{public_ip}:11434"
                     
             except Exception as e:
                 log.error(f"Failed to parse Hyperstack hypervisor registry: {str(e)}")

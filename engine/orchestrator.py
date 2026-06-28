@@ -8,10 +8,11 @@ and executing automated pool expansion or scale-to-zero teardown sequences.
 import os, json, asyncio
 from uuid import uuid4
 from engine.logger import ZeroGateLogger
-from engine.configs import DEFAULTS
+from engine.configs import WORKSPACE_CONFIGS
 from engine.drivers.hyperstack import HyperstackDriver
 from engine.drivers.runpod import RunPodDriver
 from engine.drivers.mock import MockDriver
+from engine.configs import MODEL_IMAGE_MATRIX
 
 log = ZeroGateLogger("AUTONOMIC")
 
@@ -39,20 +40,34 @@ async def load_workspace_blueprint(redis_client, tenant_id: str, pool_name: str)
         except Exception:
             pass
 
-    defaults = DEFAULTS
+    configs = WORKSPACE_CONFIGS
 
-    return defaults.get(pool_name, defaults["base"])
+    return configs.get(pool_name, configs["base"])
 
-async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: str, pool_name: str) -> str:
+async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: str, pool_name: str, model_name: str = None) -> str:
     """
     Orchestrates live cloud hardware allocations and resource teardowns.
 
     Handles hardware profile fallback scheduling arrays, evaluates inventory stock levels,
     polls infrastructure fabric providers until instance environments report
     healthy network status, and cleanly destroys instances during scale-down requests.
+    model_name is optional because teardown or prewarm lifecycles don't require a model
     """
     log.info(f"Lifecycle triggered | Tenant: {tenant_id} | Action: {action} | Pool: {pool_name}")
     config = await load_workspace_blueprint(redis_client, tenant_id, pool_name)
+    if model_name:
+        model_lower = model_name.lower()
+        matched_image = MODEL_IMAGE_MATRIX["default"]
+        
+        for signature, image_tag in MODEL_IMAGE_MATRIX.items():
+            if signature in model_lower:
+                matched_image = image_tag
+                break                
+        # Accessed by our driver during allocation
+        config["image"] = matched_image
+        config["model_name"] = model_lower
+        log.info(f"Resolved model '{model_name}' requires runtime engine: {matched_image}")
+
     provider = config.get("provider")
     
     if not provider:
@@ -62,6 +77,7 @@ async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: 
     if not driver:
         raise ValueError(f"Infrastructure transaction rejected: Cloud vendor '{provider}' is not registered.")
 
+    # Must be after confirming driver blueprint configs are valid
     if os.getenv("ZEROGATE_MOCK") == "True":
         if action == "start":
             log.info("Intercepting infrastructure provisioning request.")
@@ -75,15 +91,18 @@ async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: 
             await asyncio.sleep(1.0)
             return "SUCCESS"
 
-    driver = PROVIDER_REGISTRY.get(provider.lower().strip())
-    if not driver:
-        raise ValueError(f"Infrastructure transaction rejected: Cloud vendor '{provider}' is not registered.")
-
     client, base_url, headers = await driver.get_client_context(redis_client, tenant_id)
 
     try:
         if action == "start":
-
+            cluster_key = f"cluster_state:{tenant_id}:{pool_name}"
+            node_id, public_ip = await driver.discover_state(client, base_url, headers, config)
+            if node_id != "NONE" and public_ip:
+                log.info(f"Target pod already exists on RunPod ({node_id}) at {public_ip}. Short-circuiting allocation.")
+                # Sync the state to Redis so the worker loop can use it immediately
+                await redis_client.hset(cluster_key, mapping={"status": "active", "ip": public_ip})
+                return public_ip
+            
             raw_profiles = config.get("profiles")
             profile_fallback_list = raw_profiles if isinstance(raw_profiles, list) else [raw_profiles]
             log.info(f"Initiating hardware allocation sweeps across priority lanes: {profile_fallback_list}")
@@ -136,13 +155,90 @@ async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: 
         await client.aclose()
     return ""
 
-async def scale_to_zero(redis_client):
+
+async def sync_cloud_provider_states(redis_client):
     """
-    A continuous background daemon loop tracking workspace idleness thresholds.
+    Executes a single-run initialization sweep on container startup.
+    Dynamically scans active multi-tenant workspace blueprints to pre-warm
+    baseline anchor infrastructure and tear down leftover orphan burst cards.
+    """
+    log.info("Initializing dynamic multi-tenant infrastructure sweeps...")
     
-    Sweeps active Redis cluster states, monitors multi-tenant request activity, 
-    and automatically triggers hypervisor resource teardown workflows when a 
-    workspace remains completely idle past the configured timeout limits.
+    try:
+        if os.getenv("ZEROGATE_MOCK") == "True":
+            log.info("MOCK mode active. Skipping cloud fabric verification sweeps.")
+            return
+
+        async for blueprint_key in redis_client.scan_iter(match="workspace_blueprint:*:*"):
+            parts = blueprint_key.split(":")
+            if len(parts) < 3:
+                continue
+
+            tenant_id = parts[1]
+            pool_tier = parts[2]
+
+            # Fetch the active blueprint config map for this pool lane
+            config = await load_workspace_blueprint(redis_client, tenant_id, pool_tier)
+            provider_token = config.get("provider")
+            cluster_key = f"cluster_state:{tenant_id}:{pool_tier}"
+
+            if not provider_token:
+                continue
+
+            driver = PROVIDER_REGISTRY.get(provider_token.lower().strip())
+            if not driver:
+                continue
+
+            client, base_url, headers = await driver.get_client_context(redis_client, tenant_id)
+            try:
+                node_id, public_ip = await driver.discover_state(client, base_url, headers, config)
+                
+                if pool_tier == "base":
+                    # =========================================================================
+                    # TRACK A: Validate, Heal, and Pre-Warm Baseline Pool (Cases 1, 2, 3)
+                    # =========================================================================
+                    if node_id != "NONE":
+                        if public_ip:
+                            log.info(f"Tenant [{tenant_id}] hot base anchor matched at {public_ip}. Syncing cache...")
+                            await redis_client.hset(cluster_key, mapping={"status": "active", "ip": public_ip})
+                        else:
+                            log.info(f"Tenant [{tenant_id}] hardware found ({node_id}), but network proxy is still initializing. Setting to booting state...")
+                            await redis_client.hset(cluster_key, mapping={"status": "booting", "ip": ""})
+
+                    else:
+                        log.info(f"Tenant [{tenant_id}] base pool is cold/unaligned. Deploying anchor hardware...")
+                        await redis_client.hset(cluster_key, "status", "booting")
+                        
+                        fresh_base_ip = await manage_infrastructure_lifecycle(redis_client, "start", tenant_id, "base")
+                        if fresh_base_ip:
+                            await redis_client.hset(cluster_key, mapping={"status": "active", "ip": fresh_base_ip})
+                        else:
+                            await redis_client.hset(cluster_key, "status", "cold")
+                            
+                elif pool_tier == "burst":
+                    # =========================================================================
+                    # TRACK B: Sweep Burst Lane for Leftover Orphan Cards (Case 4)
+                    # =========================================================================
+                    if node_id != "NONE" and public_ip:
+                        log.info(f"Tenant [{tenant_id}] orphan burst container caught at {public_ip}. Flagging for scale-to-zero.")
+                        await redis_client.hset(cluster_key, mapping={"status": "active", "ip": public_ip})
+                        await redis_client.set(f"active_jobs:{tenant_id}", "0")
+                        
+            except Exception as node_err:
+                log.error(f"Failed to synchronize boot state for tenant {tenant_id} on pool {pool_tier}: {node_err}")
+            finally:
+                await client.aclose()
+                
+        log.info("Multi-tenant infrastructure verification sweeps successfully completed.")
+        
+    except Exception as boot_sync_err:
+        log.error(f"Startup cloud provider sweep encountered an error: {boot_sync_err}")
+
+
+async def scale_to_zero_daemon(redis_client):
+    """
+    A continuous background polling daemon monitoring multi-tenant workspace idleness.
+    Resets trackers for hot lanes and flattens burst compute footprints when thresholds expire.
     """
     log.info("Multi-Tenant Scale-to-Zero background daemon engaged.")
     IDLE_TIMEOUT = int(os.getenv("SCALE_TO_ZERO_TIMEOUT", 10))
@@ -150,44 +246,24 @@ async def scale_to_zero(redis_client):
     SLEEP_INTERVAL = 2
     WARN_THRESHOLD = IDLE_TIMEOUT - WARN_WINDOW
 
-    # Run the self-healing cloud sweep once on container boot up, ignore if mock = true
-    try:
-        if os.getenv("ZEROGATE_MOCK") != "True":
-            system_tenant = "zerogate-master-key"
-            config = await load_workspace_blueprint(redis_client, system_tenant, "burst")
-            provider = config.get("provider")
-            if provider:
-                driver = PROVIDER_REGISTRY.get(provider.lower().strip())
-                if driver:
-                    log.info(f"Sweeping cloud provider [{provider}] for orphan instances...")
-                    client, base_url, headers = await driver.get_client_context(redis_client, system_tenant)
-                    try:
-                        vm_id, public_ip = await driver.discover_state(client, base_url, headers, config)
-                        
-                        if vm_id != "NONE" and public_ip:
-                            log.info(f"Detected orphan VM {vm_id} at {public_ip}. Healing cache...")
-                            cluster_key = f"cluster_state:{system_tenant}:burst"
-                            await redis_client.hset(cluster_key, mapping={"status": "active", "ip": public_ip})
-                            await redis_client.set(f"active_jobs:{system_tenant}", "0")
-                    finally:
-                        await client.aclose()
-            log.info("Cloud provider cleared of orphan instances.")
-            
-    except Exception as boot_sync_err:
-        log.info(f"Startup cloud provider sweep failed: {boot_sync_err}")
-
     while True:
         await asyncio.sleep(SLEEP_INTERVAL)
         try:
-            # Non-blocking async scanning over distributed keyspace strings
-            async for cluster_key in redis_client.scan_iter(match="cluster_state:*:burst"):
+            # Scan over any active multi-tenant cluster keyspace across all pools dynamically
+            async for cluster_key in redis_client.scan_iter(match="cluster_state:*:*"):
                 parts = cluster_key.split(":")
                 if len(parts) < 3:
                     continue
-                tenant_id = parts[1]
                 
-                idle_ticks_key = f"tenant_idle_ticks:{tenant_id}"
-                warned_key = f"tenant_warned_state:{tenant_id}"
+                tenant_id = parts[1]
+                pool_tier = parts[2]
+                
+                if pool_tier == "base":
+                    continue
+                
+                # Isolate metrics trackers by combining tenant and pool names to avoid cross-contamination
+                idle_ticks_key = f"tenant_idle_ticks:{tenant_id}:{pool_tier}"
+                warned_key = f"tenant_warned_state:{tenant_id}:{pool_tier}"
                 
                 current_ticks_raw = await redis_client.get(idle_ticks_key)
                 current_ticks = int(current_ticks_raw) if current_ticks_raw else 0
@@ -196,20 +272,22 @@ async def scale_to_zero(redis_client):
                 cluster = await redis_client.hgetall(cluster_key)
                 gpu_status = cluster.get("status", "cold")
                 
+                # Reset guardrail bypass loops if the infrastructure is already inactive or handling traffic
                 if gpu_status in ["cold", "tearing_down"] or tenant_jobs > 0:
                     await redis_client.delete(idle_ticks_key, warned_key)
                     continue
                     
-                # Clock Progression Metrics
+                # Clock Metric Progression
                 current_ticks += SLEEP_INTERVAL
                 await redis_client.set(idle_ticks_key, current_ticks)
-                log.info(f"Tenant: {tenant_id} | Idle Time: {current_ticks}s / {IDLE_TIMEOUT}s")
+                log.info(f"Tenant: {tenant_id} | Tier: {pool_tier} | Idle Time: {current_ticks}s / {IDLE_TIMEOUT}s")
                 
+                # Evaluate Warning and Timeout Threshold Boundaries
                 if current_ticks >= IDLE_TIMEOUT:
-                    log.info(f"Tenant {tenant_id} timed out. Processing infrastructure erasure...")
+                    log.info(f"Tenant {tenant_id} tier [{pool_tier}] timed out. Executing lifecycle erasure...")
                     await redis_client.hset(cluster_key, "status", "tearing_down")
                     
-                    if await manage_infrastructure_lifecycle(redis_client, "delete", tenant_id, "burst") == "SUCCESS":
+                    if await manage_infrastructure_lifecycle(redis_client, "delete", tenant_id, pool_tier) == "SUCCESS":
                         await redis_client.delete(cluster_key, idle_ticks_key, warned_key)
                     else:
                         await redis_client.hset(cluster_key, "status", "active")
@@ -217,8 +295,8 @@ async def scale_to_zero(redis_client):
                 elif current_ticks >= WARN_THRESHOLD:
                     is_warned = await redis_client.get(warned_key) == "True"
                     if not is_warned:
-                        log.info(f"Warning: Tenant {tenant_id} cluster idle for {current_ticks}s! Teardown in {IDLE_TIMEOUT - current_ticks}s!")
+                        log.warning(f"Warning: Tenant {tenant_id} pool [{pool_tier}] idle for {current_ticks}s! Teardown in {IDLE_TIMEOUT - current_ticks}s!")
                         await redis_client.set(warned_key, "True")
                         
         except Exception as loop_crash_error:
-            log.info(f"The background loop caught an exception frame: {loop_crash_error}")
+            log.error(f"The scale-to-zero background daemon caught an exception frame: {loop_crash_error}")

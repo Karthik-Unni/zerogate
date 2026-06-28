@@ -9,7 +9,7 @@ import json, asyncio, time, os, httpx, asyncpg,logging
 from aiokafka import AIOKafkaConsumer, TopicPartition
 import redis.asyncio as aioredis
 from engine.logger import ZeroGateLogger
-from engine.orchestrator import manage_infrastructure_lifecycle, scale_to_zero
+from engine.orchestrator import manage_infrastructure_lifecycle, scale_to_zero_daemon, sync_cloud_provider_states
 
 # Global Memory Anchor to protect tasks from Python's garbage collector
 ACTIVE_TASKS = set()
@@ -61,60 +61,76 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
     start_time, cold_start_ms, target_ip = time.time(), 0, None
 
     try:
-        # Streamlined Routing Selector Path
         global_depth = int(await redis_client.get("global_in_flight_counter") or 0)
-        
-        if global_depth <= int(os.getenv("BURST_THRESHOLD", 0)):
-            log.info(f"Task {req_id} mapped directly to static buffer pool.")
-            target_ip = os.getenv("HYPERSTACK_MAIN_NODE_IP")
-        else:
-            # Multi-Tenant Auto-Scaling Infrastructure Track
-            cluster_key, lock_key = f"cluster_state:{tenant_id}:burst", f"lock:provisioning:{tenant_id}:burst"
+        # Dynamically evaluate the current load to assign the target infrastructure tier
+        current_pool_target = "base" if global_depth <= int(os.getenv("BURST_THRESHOLD", 0)) else "burst"
+        cluster_key = f"cluster_state:{tenant_id}:{current_pool_target}"
+        lock_key = f"lock:provisioning:{tenant_id}:{current_pool_target}"
+        cluster = await redis_client.hgetall(cluster_key) or {}
+        gpu_status = cluster.get("status", "cold")
+        target_ip = cluster.get("ip", "")
+
+
+        if gpu_status == "active" and target_ip and os.getenv("ZEROGATE_MOCK") != "True":
+            try:
+                async with httpx.AsyncClient(timeout=2.0) as check_client:
+                    res = await check_client.get(f"https://{target_ip}/health")
+                    # IF we get here, the pod crashed
+                    if res.status_code != 200:
+                        raise Exception()
+            except Exception:
+                log_gate_key = f"log_gate:{target_ip}:crash_alert"
+                if await redis_client.set(log_gate_key, "1", ex=30, nx=True):
+                    log.warning(f"Task {req_id} caught a crashed active container at {target_ip}. Forcing recovery...")
+                # This ensures that when tasks read from Redis inside the lock block,
+                # they actually see the "cold" state and trigger a real provision cycle!
+                await redis_client.hset(cluster_key, mapping={"status": "cold", "ip": ""})
+                gpu_status = "cold"
+                target_ip = ""
+
+        if gpu_status == "cold" or not target_ip:
+            log.info(f"Task {req_id} queued at provisioning lock entrance...")
             
-            # Simple, native text string dictionary extraction
-            cluster = await redis_client.hgetall(cluster_key)
-            gpu_status, target_ip = cluster.get("status", "cold"), cluster.get("ip", "")
-
-            if gpu_status == "cold" or not target_ip:
-                log.info(f"Task {req_id} queued at provisioning lock entrance...")
+            async with redis_client.lock(lock_key, timeout=420):
+                cluster = await redis_client.hgetall(cluster_key)
+                gpu_status = cluster.get("status", "cold")
                 
-                async with redis_client.lock(lock_key, timeout=420):
-                    cluster = await redis_client.hgetall(cluster_key)
-                    gpu_status = cluster.get("status", "cold")
-                    
-                    # Flattened Lock Guardrails
-                    if gpu_status == "booting":
-                        log.info(f"Task {req_id} waiting on active boot sequence...")
-                        while gpu_status == "booting":
-                            await asyncio.sleep(3)
-                            cluster = await redis_client.hgetall(cluster_key)
-                            gpu_status = cluster.get("status", "cold")
-                        target_ip = cluster.get("ip", "")
+                # Flattened Lock Guardrails
+                if gpu_status == "booting":
+                    log.info(f"Task {req_id} waiting on active boot sequence...")
+                    while gpu_status == "booting":
+                        await asyncio.sleep(3)
+                        cluster = await redis_client.hgetall(cluster_key)
+                        gpu_status = cluster.get("status", "cold")
+                    target_ip = cluster.get("ip", "")
 
-                    elif gpu_status == "cold":
-                        log.info(f"Task {req_id} building infrastructure...")
-                        await redis_client.hset(cluster_key, "status", "booting")
-                        
-                        boot_start = time.time()
-                        target_ip = await manage_infrastructure_lifecycle(redis_client, "start", tenant_id, "burst")
-                        cold_start_ms = int((time.time() - boot_start) * 1000)
-                        
-                        await redis_client.hset(cluster_key, mapping={"status": "active", "ip": target_ip})
-                        await redis_client.expire(cluster_key, 1800)
-                    else:
-                        target_ip = cluster.get("ip", "")
+                elif gpu_status == "cold":
+                    log.info(f"Task {req_id} building infrastructure...")
+                    await redis_client.hset(cluster_key, "status", "booting")
+                    
+                    boot_start = time.time()
+                    target_ip = await manage_infrastructure_lifecycle(redis_client, "start", tenant_id, current_pool_target, target_model)
+                    cold_start_ms = int((time.time() - boot_start) * 1000)
+                    await redis_client.hset(cluster_key, mapping={"status": "booting", "ip": target_ip})
+                    await redis_client.expire(cluster_key, 1800)
+                    
+                else:
+                    target_ip = cluster.get("ip", "")
 
         if not target_ip: 
             raise Exception("Failed to secure active target IP from hypervisor layer.")
 
         if os.getenv("ZEROGATE_MOCK") != "True":
             async with httpx.AsyncClient(timeout=10.0) as client:
-                for attempt in range(1, 121): # Expanded to 4 minutes to guarantee heavy unquantized models stabilize
+                for attempt in range(1, 121):
                     try:
-                        # Non-blocking async check against the container's standard inference port
-                        response = await client.get(f"http://{target_ip}:11434/v1/models")
+                        # Non-blocking async check against the container's standard inference port. Don't use v1/models
+                        response = await client.get(f"https://{target_ip}/health")
                         
                         if response.status_code == 200:
+                            # The engine is officially ready! Now authorize waiting tasks to use it
+                            await redis_client.hset(cluster_key, mapping={"status": "active", "ip": target_ip})
+                            await redis_client.expire(cluster_key, 1800)
                             if await redis_client.set(f"log_gate:{target_ip}:ready", "1", ex=5, nx=True):
                                 log.info(f"Target interface synchronized! Remote vLLM model engine is officially hot.")
                             break
@@ -127,7 +143,6 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
                             
                     await asyncio.sleep(2)
                 else:
-                    # If the loop completes 120 ticks without hitting a break, the container failed to initialize
                     raise TimeoutError(f"The model engine container at {target_ip} failed to open socket lines within 4 minutes.")
 
         start_time = time.time()
@@ -151,8 +166,18 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
                 "temperature": 0.7,
                 "max_tokens": 1024
             }
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                res_json = (await client.post(f"http://{target_ip}:11434/v1/chat/completions", json=vllm_payload)).json()
+            request_timeout = httpx.Timeout(
+                connect=5.0,
+                read=120.0,
+                write=10.0,
+                pool=5.0  # Add this to satisfy the library requirement
+            )
+            async with httpx.AsyncClient(timeout=request_timeout) as client:
+                response = await client.post(
+                    f"https://{target_ip}/v1/chat/completions", 
+                    json=vllm_payload
+                )
+                res_json = response.json()
 
         choices = res_json.get("choices", [])
         ai_reply = choices[0].get("message", {}).get("content", "") if choices else "No content returned."
@@ -184,7 +209,13 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
 
     except Exception as error:
         log.info(f"Pipeline execution failed for {req_id}: {error}")
-    
+        
+        error_name = type(error).__name__
+        if "failed to open socket" in str(error) or "Connect" in error_name or "Timeout" in error_name:
+            log.warning(f"Detected dead container at {target_ip}. Resetting cluster state to cold.")
+            
+            await redis_client.hset(cluster_key, mapping={"status": "cold", "ip": ""})
+
     finally:
         # Streamlined Cleanup and Kafka Commits
         await redis_client.decr(f"active_jobs:{client_key}")
@@ -209,6 +240,14 @@ async def main_worker_loop():
     commit_lock = asyncio.Lock()
     
     redis_client = await aioredis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
+
+    # Force initial sweep before kafka opens
+    # We await this directly to block the worker boot track until our baseline nodes are hot, kafka won't consume early
+    try:
+        await sync_cloud_provider_states(redis_client)
+    except Exception as e:
+        log.critical(f"Boot initialization fence cracked: {e}. Proceeding with active telemetry risks...")
+
     dsn = os.getenv("DATABASE_URL", "")
     db_pool = await asyncpg.create_pool(dsn=dsn, ssl=False, min_size=1, max_size=5)
     await bootstrap_database_schema(db_pool)
@@ -241,7 +280,7 @@ async def main_worker_loop():
             await asyncio.sleep(attempt)
 
     # Initialize scale-to-zero tracker background daemon
-    asyncio.create_task(scale_to_zero(redis_client))
+    asyncio.create_task(scale_to_zero_daemon(redis_client))
     
     try:
         async for msg in consumer:
@@ -262,7 +301,13 @@ async def main_worker_loop():
             task = asyncio.create_task(process_inference_job(
                 payload, redis_client, db_pool, consumer, msg, in_flight_offsets, commit_lock
             ))
-            ACTIVE_TASKS.add(task)
+            def handle_task_result(t):
+                try:
+                    t.result()
+                except Exception as e:
+                    logging.exception(f"Inference job task failed with exception: {e}")
+
+            task.add_done_callback(handle_task_result)
             task.add_done_callback(ACTIVE_TASKS.discard)
 
     except Exception as stream_err:

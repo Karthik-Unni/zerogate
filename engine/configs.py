@@ -21,20 +21,20 @@ Note: You can configure 'base' to use Hyperstack bare-metal virtual machines
       and 'burst' to leverage RunPod containers natively for multi-cloud load-balancing.
 ===============================================================================
 """
-DEFAULTS = {
+WORKSPACE_CONFIGS = {
     "base": {
         "provider": "runpod",
         "name": "zerogate-base",
-        "image": "runpod/vllm:latest",
-        "profiles": ["gpu-rtx-4090-1"],
+        "image": "vllm/vllm-openai:v0.5.4", 
+        "profiles": ["NVIDIA GeForce RTX 4090", "NVIDIA L4", "NVIDIA GeForce RTX 5090"],
         "min_nodes": 0,
         "max_nodes": 1,
     },
     "burst": {
         "provider": "runpod",
         "name": "zerogate-burst",
-        "image": "runpod/vllm:latest",
-        "profiles": ["gpu-rtx-4090-1"],
+        "image": "vllm/vllm-openai:stable", 
+        "profiles": ["NVIDIA GeForce RTX 4090", "NVIDIA L4", "NVIDIA GeForce RTX 5090"],
         "min_nodes": 0,
         "max_nodes": 5, 
     },
@@ -46,4 +46,27 @@ DEFAULTS = {
         "min_nodes": 0,
         "max_nodes": 1,
     }
+}
+"""
+MODEL_IMAGE_MATRIX: Autonomic Runtime Compatibility Registry
+
+Acts as the intelligent decoupling layer between user-requested inference 
+models and underlying cloud hypervisor container runtimes. 
+
+Why this exists:
+    Open-source LLM weight configurations, tokenizer structures, and attention 
+    mechanisms (e.g., RoPE scaling formats) introduce breaking upstream Python/Rust 
+    dependency disparities across different version releases of inference engines.
+    
+How it operates:
+    The core orchestration plane interceptor loops query this dictionary matrix 
+    at runtime using substring signature matching against incoming user payloads. 
+    It dynamically mutates the cloud provider's target allocation image tag, 
+    bypassing static tenant blueprint settings.
+"""
+MODEL_IMAGE_MATRIX = {
+    "llama-3.1": "vllm/vllm-openai:v0.6.2",
+    "llama-3": "vllm/vllm-openai:v0.5.4",
+    "mistral": "vllm/vllm-openai:v0.4.2",
+    "default": "vllm/vllm-openai:v0.5.4"
 }
