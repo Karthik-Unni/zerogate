@@ -406,14 +406,13 @@ async def test_blueprint_redis_hit_returns_custom_config():
         "name": "custom-tenant-burst",
         "image": "vllm/vllm-openai:v0.6.2",
         "profiles": ["NVIDIA A100"],
-        "min_nodes": 0,
-        "max_nodes": 3,
+        
     }
 
     redis = _mock_redis(blueprint_raw=json.dumps(custom_config))
 
     result = await load_workspace_blueprint(redis, "tenant-custom", "burst")
-
+    assert result == custom_config
     assert result["name"] == "custom-tenant-burst"
     assert result["profiles"] == ["NVIDIA A100"]
     assert result != WORKSPACE_CONFIGS["burst"], (
