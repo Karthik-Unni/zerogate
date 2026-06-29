@@ -83,6 +83,10 @@ class HyperstackDriver(BaseCloudDriver):
                     last_vm = vms[-1]
                     vm_id = str(last_vm.get("id"))
                     public_ip = str(last_vm.get("floating_ip") or last_vm.get("public_ip", "")).strip()
+
+                    if not public_ip or public_ip == "-":
+                        return "NONE", ""
+                    
                     return vm_id, f"{public_ip}:11434"
                     
             except Exception as e:

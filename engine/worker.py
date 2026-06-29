@@ -73,8 +73,10 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
 
         if gpu_status == "active" and target_ip and os.getenv("ZEROGATE_MOCK") != "True":
             try:
+                # hyperstack will use http, runpod network uses https
+                base_endpoint = f"http://{target_ip}" if ":" in target_ip else f"https://{target_ip}"
                 async with httpx.AsyncClient(timeout=2.0) as check_client:
-                    res = await check_client.get(f"https://{target_ip}/health")
+                    res = await check_client.get(f"{base_endpoint}/health")
                     # IF we get here, the pod crashed
                     if res.status_code != 200:
                         raise Exception()
@@ -121,11 +123,13 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
             raise Exception("Failed to secure active target IP from hypervisor layer.")
 
         if os.getenv("ZEROGATE_MOCK") != "True":
+            # base reevaluation: Update schema with freshly provisioned or synced target_ip
+            base_endpoint = f"http://{target_ip}" if ":" in target_ip else f"https://{target_ip}"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 for attempt in range(1, 121):
                     try:
                         # Non-blocking async check against the container's standard inference port. Don't use v1/models
-                        response = await client.get(f"https://{target_ip}/health")
+                        response = await client.get(f"{base_endpoint}/health")
                         
                         if response.status_code == 200:
                             # The engine is officially ready! Now authorize waiting tasks to use it
@@ -144,6 +148,9 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
                     await asyncio.sleep(2)
                 else:
                     raise TimeoutError(f"The model engine container at {target_ip} failed to open socket lines within 4 minutes.")
+        # Mock mode: force active
+        else:
+            await redis_client.hset(cluster_key, mapping={"status": "active", "ip": target_ip})
 
         start_time = time.time()
 
@@ -161,7 +168,8 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
             }
         else:
             vllm_payload = {
-                "model": target_model,
+                # handle hyperstack and runpods lowercase transformation
+                "model": target_model.lower() if ":" not in target_ip else target_model,
                 "messages": [{"role": "user", "content": payload.get("Prompt")}],
                 "temperature": 0.7,
                 "max_tokens": 1024
@@ -170,11 +178,12 @@ async def process_inference_job(payload, redis_client, db_pool, consumer, msg, i
                 connect=5.0,
                 read=120.0,
                 write=10.0,
-                pool=5.0  # Add this to satisfy the library requirement
+                pool=5.0
             )
+            base_endpoint = f"http://{target_ip}" if ":" in target_ip else f"https://{target_ip}"
             async with httpx.AsyncClient(timeout=request_timeout) as client:
                 response = await client.post(
-                    f"https://{target_ip}/v1/chat/completions", 
+                    f"{base_endpoint}/v1/chat/completions", 
                     json=vllm_payload
                 )
                 res_json = response.json()

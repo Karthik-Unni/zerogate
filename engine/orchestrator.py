@@ -55,20 +55,30 @@ async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: 
     """
     log.info(f"Lifecycle triggered | Tenant: {tenant_id} | Action: {action} | Pool: {pool_name}")
     config = await load_workspace_blueprint(redis_client, tenant_id, pool_name)
+    provider = config.get("provider")
+
     if model_name:
-        model_lower = model_name.lower()
-        matched_image = MODEL_IMAGE_MATRIX["default"]
-        
-        for signature, image_tag in MODEL_IMAGE_MATRIX.items():
-            if signature in model_lower:
-                matched_image = image_tag
-                break                
+        # Unified Abstraction Provider Pattern
+        if provider == "hyperstack":
+            matched_image = config.get("image", "ZeroGate-Alpha")
+            log.info(f"Hyperstack detected. Using custom image identifier: {matched_image}")
+        elif provider == "mock":
+            # Handle mock mode cleanly without touching matrix rules
+            matched_image = config.get("image")
+            log.info(f"Mock mode active. Using local simulation engine snapshot: {matched_image}")
+            
+        else:
+            matched_image = MODEL_IMAGE_MATRIX["default"]
+            for signature, image_tag in MODEL_IMAGE_MATRIX.items():
+                if signature in model_name:
+                    matched_image = image_tag
+                    break             
+            log.info(f"Runpod detected. Using image identifier: {matched_image}")
+   
         # Accessed by our driver during allocation
         config["image"] = matched_image
-        config["model_name"] = model_lower
+        config["model_name"] = model_name
         log.info(f"Resolved model '{model_name}' requires runtime engine: {matched_image}")
-
-    provider = config.get("provider")
     
     if not provider:
         raise ValueError(f"Infrastructure transaction rejected: 'provider' key is missing for pool [{pool_name}].")
@@ -98,7 +108,7 @@ async def manage_infrastructure_lifecycle(redis_client, action: str, tenant_id: 
             cluster_key = f"cluster_state:{tenant_id}:{pool_name}"
             node_id, public_ip = await driver.discover_state(client, base_url, headers, config)
             if node_id != "NONE" and public_ip:
-                log.info(f"Target pod already exists on RunPod ({node_id}) at {public_ip}. Short-circuiting allocation.")
+                log.info(f"Target pod already exists on ({node_id}) at {public_ip}. Short-circuiting allocation.")
                 # Sync the state to Redis so the worker loop can use it immediately
                 await redis_client.hset(cluster_key, mapping={"status": "active", "ip": public_ip})
                 return public_ip
@@ -194,9 +204,7 @@ async def sync_cloud_provider_states(redis_client):
                 node_id, public_ip = await driver.discover_state(client, base_url, headers, config)
                 
                 if pool_tier == "base":
-                    # =========================================================================
-                    # TRACK A: Validate, Heal, and Pre-Warm Baseline Pool (Cases 1, 2, 3)
-                    # =========================================================================
+                    # Track A: Validate, Heal, and Pre-Warm Baseline Pool (Cases 1, 2, 3)
                     if node_id != "NONE":
                         if public_ip:
                             log.info(f"Tenant [{tenant_id}] hot base anchor matched at {public_ip}. Syncing cache...")
@@ -216,9 +224,7 @@ async def sync_cloud_provider_states(redis_client):
                             await redis_client.hset(cluster_key, "status", "cold")
                             
                 elif pool_tier == "burst":
-                    # =========================================================================
-                    # TRACK B: Sweep Burst Lane for Leftover Orphan Cards (Case 4)
-                    # =========================================================================
+                    # Track B: Sweep Burst Lane for Leftover Orphan Cards (Case 4)
                     if node_id != "NONE" and public_ip:
                         log.info(f"Tenant [{tenant_id}] orphan burst container caught at {public_ip}. Flagging for scale-to-zero.")
                         await redis_client.hset(cluster_key, mapping={"status": "active", "ip": public_ip})

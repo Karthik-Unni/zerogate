@@ -99,6 +99,9 @@ docker compose logs -f gateway
 
 # Watch the worker lock states, mock compute boot-ups, and SQL ledger commits
 docker compose logs -f worker
+
+# Watch the relational database register billing records and state transitions
+docker compose logs -f postgres
 ```
 
 ---
@@ -155,6 +158,8 @@ Pull real-time relational aggregation directly from the PostgreSQL ledger to tra
     curl -X GET http://localhost:8000/v1/analytics \
         -H "X-ZeroGate-Key: zerogate-alpha-demo"
     ```
+
+    > **Pro-Tip:** Run this verification command *while* your multi-tenant ingress stress test (`simulator`) is active or immediately following a teardown sequence to capture live operational metrics.
 
 > **Systems Engineering Note: Telemetry Aggregation**  
 > The `aggregated_idle_tax_saved_usd` metric updates **strictly upon the completion of an infrastructure erasure cycle**. If your workload testing batch does not breach the `BURST_THRESHOLD` parameter (default: 15), the system processes your tasks entirely on the warm baseline buffer layer without provisioning extra burst nodes. Consequently, no cloud waste occurs, and the ledger will accurately report `0.0` until an over-capacity surge actively triggers a spin-up, idle tracking sequence, and a subsequent teardown loop.
@@ -227,15 +232,36 @@ For high-performance, non-virtualized production workloads. To bypass heavy runt
     # HYPERSTACK CONFIGS
     # ==============================================================================
     HYPERSTACK_API_KEY=your_secret_api_key
-    HYPERSTACK_MAIN_NODE_IP=your_hyperstack_main_node_ip
     HYPERSTACK_SSH_KEY_NAME=your_ssh_key_name
     HYPERSTACK_ENVIRONMENT_NAME=your_environment_name
-    HYPERSTACK_REGION=your_region_name
     ```
 
-### Tier 2: Lightweight Container Bursting (RunPod Provider - Coming This Week)
+### Tier 2: Lightweight Container Bursting (RunPod Provider)
 
-Our active engineering sprint is focused on launching native RunPod container driver hooks. This will allow deploying public vLLM images straight from a standard API request with **zero custom snapshot configurations required**, slashing hypervisor cold-start latency down from 5 minutes to **<40 seconds**. Follow along with our active development tracking inside Issue #1!
+**LIVE NOW:** Leverage container-based GPU scaling, dropping hypervisor cold-start latency down to <40 seconds on cached container nodes with native self-healing failure interception.
+
+1. Ensure your target model weights are accessible to your RunPod template profile deployment.
+2. Update your local `.env` configuration file to activate your production credentials:
+
+    ```env
+    ZEROGATE_MOCK=False
+    RUNPOD_API_KEY=your_secret_runpod_api_key
+    ```
+
+3. Run your live infrastructure validation sweep:
+
+   ```bash
+   docker compose down -v && docker compose up -d
+   docker compose run --build --rm simulator
+   ```
+
+   Immediately open a second terminal window to monitor the backend orchestration mechanics in real time
+
+   ```bash
+   docker compose logs -f worker
+   ```
+
+   Watch your worker terminal check socket vitality, purge any discovered zombie nodes, scale out burst pools instantly under heavy load, and scale-to-zero when your traffic clears.
 
 ---
 
@@ -243,11 +269,11 @@ Our active engineering sprint is focused on launching native RunPod container dr
 
 Deep-tech infrastructure is built iteratively. We publish our engineering milestones openly to cultivate transparent collaboration with our core alpha developer network.
 
-* **v0.1.0-alpha (Current)**: Full event-driven kafka consumer gateway,  distributed locks, automated scale-to-zero background daemons, and local evaluation engine.
-
-* **v0.2.0 (Active Sprint)**: Implement fluid cross-cloud pod drivers (RunPod) to leverage container-based GPU scaling, dropping cold starts under 90 seconds (and sub-40 seconds on cached container nodes).
-
-* **v0.3.0 (Production Enterprise Milestone)**: Transition from a push-based proxy router to a pull-based late-binding work-stealing consumer mesh to optimize multi-node execution throughput.
+* **v0.1.0 (Completed)**: Full event-driven kafka consumer gateway, distributed locks, automated scale-to-zero background daemons, and local evaluation engine.
+* **v0.2.0 (Completed)**: Implement fluid cross-cloud pod drivers (RunPod) to leverage container-based GPU scaling, dropping cold starts under 90 seconds (and sub-40 seconds on cached container nodes).
+* **v0.3.0 (Active Sprint)**: **Hybrid Cluster Orchestration**: Bridge on-premise localized hardware nodes with dynamic cloud burst providers to mitigate absolute GPU scarcity.
+* **v0.4.0 (Production Enterprise Milestone)**: Transition from a push-based proxy router to a pull-based late-binding work-stealing consumer mesh to optimize multi-node execution throughput.
+* **v0.5.0 (Commercial Control Plane Preview)**: Launch a unified telemetry dashboard exposing real-time cost-savings metrics, GPU utilization analytics, and cross-cloud infrastructure ROI reporting.
 
 ---
 
